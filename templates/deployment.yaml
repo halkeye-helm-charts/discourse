@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "discourse.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "discourse.name" . }}
+    helm.sh/chart: {{ include "discourse.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "discourse.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "discourse.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      {{- if .Values.dnsConfig }}
+      dnsConfig:
+        {{- toYaml .Values.dnsConfig | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: mkdir
+          image: "{{ .Values.mkdirImage.repository }}:{{ .Values.mkdirImage.tag }}"
+          imagePullPolicy: {{ .Values.mkdirImage.pullPolicy }}
+          command: ["mkdir", "-p", "/shared/log/rails"]
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+        - name: migratedb
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: "/var/www/discourse"
+          command: ["su", "discourse", "-c", "bundle exec rake db:migrate"]
+          env:
+            - name: LANG
+              value: {{ .Values.discourse.lang | quote }}
+            {{ range $key, $value := .Values.discourse.env -}}
+            - name: DISCOURSE_{{ $key | upper }}
+              value: {{ $value | quote }}
+            {{ end }}
+            {{ range $key, $value := .Values.discourse.envSecret -}}
+            - name: DISCOURSE_{{ $key | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $value.name }}
+                  key: {{ $value.key }}
+            {{ end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/sbin/boot"]
+          # command: ["bash", "-c", "tail -f /dev/null"]
+          env:
+            - name: LANG
+              value: {{ .Values.discourse.lang | quote }}
+            {{ range $key, $value := .Values.discourse.env -}}
+            - name: DISCOURSE_{{ $key | upper }}
+              value: {{ $value | quote }}
+            {{ end }}
+            {{ range $key, $value := .Values.discourse.envSecret -}}
+            - name: DISCOURSE_{{ $key | upper }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $value.name }}
+                  key: {{ $value.key }}
+            {{ end }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+          volumeMounts:
+          - name: shared
+            mountPath: /shared
+          - name: varlog
+            mountPath: /var/log
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+      - name: shared
+      {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ template "discourse.fullname" . }}-shared
+      {{- else }}
+        emptyDir: {}
+      {{- end }}
+      - name: varlog
+      {{- if .Values.persistence.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ template "discourse.fullname" . }}-varlog
+      {{- else }}
+        emptyDir: {}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
