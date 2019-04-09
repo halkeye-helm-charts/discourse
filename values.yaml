@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   repository: halkeye/discourse
-  tag: v2.2.1
+  tag: stable
   #pullPolicy: IfNotPresent
   pullPolicy: Always
 
