@@ -7,7 +7,6 @@ replicaCount: 1
 image:
   repository: halkeye/discourse
   tag: stable
-  #pullPolicy: IfNotPresent
   pullPolicy: Always
 
 nameOverride: ""
